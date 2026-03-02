@@ -12,16 +12,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "deck.gl": "^9.0.0",
+    "react-map-gl": "^7.1.7",
+    "mapbox-gl": "^3.1.0",
+    "@deck.gl/layers": "^9.0.0",
+    "@deck.gl/core": "^9.0.0",
+    "antd": "^5.13.0",
     "axios": "^1.13.2",
-    "element-plus": "^2.13.0",
-    "leaflet": "^1.9.4",
-    "vue": "^3.5.25",
-    "vue-i18n": "^9.14.5",
-    "vue-router": "^4.6.3"
+    "react-i18next": "^14.0.0",
+    "i18next": "^23.7.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.2",
-    "vite": "^7.2.4",
-    "vite-plugin-vue-devtools": "^8.0.5"
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^7.2.4"
   }
 }
