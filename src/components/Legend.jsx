@@ -79,6 +79,23 @@ function Legend() {
           <span>Matched</span>
         </div>
         <div className="legend-item">
+          <svg width="32" height="32" viewBox="0 0 32 32">
+            <circle
+              cx="16"
+              cy="16"
+              r="14"
+              fill="#722ed1"
+              stroke="#fff"
+              strokeWidth="2"
+            />
+            <path
+              d="M16 8 L20 14 L12 14 Z M14 16 L18 16 L18 22 L14 22 Z"
+              fill="#fff"
+            />
+          </svg>
+          <span>Occupied Driver</span>
+        </div>
+        <div className="legend-item">
           <svg width="40" height="4" viewBox="0 0 40 4">
             <line
               x1="0"
