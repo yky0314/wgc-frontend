@@ -564,6 +564,13 @@ function App() {
           selectedPassengerRef.current = nearest;
           setSelectedPassenger(nearest);
 
+          // 清除主司机的匹配关系，颜色从绿色变回蓝色，等待下次匹配
+          setMatches((prev) => {
+            const newM = { ...prev };
+            delete newM[`d_${driverId}`];
+            return newM;
+          });
+
           if (nearest) {
             message.success(
               `Picked up ${target.id}! Driving to next passenger ${nearest.id}`
@@ -711,10 +718,17 @@ function App() {
                   passenger.lng
                 );
                 if (dist <= ARRIVAL_THRESHOLD_M) {
-                  // 到达！标记双方待移除
-                  toRemoveDriverIds.push(d.id);
+                  // 到达！乘客消失，竞争司机继续巡游（不删除司机）
                   toRemovePassengerIds.push(matchedPassengerId);
-                  return null; // 标记为移除
+                  toRemoveDriverIds.push(d.id); // 仅用于清除匹配关系
+                  // 重置路线，让竞争司机继续随机游走
+                  return {
+                    ...d,
+                    lat: passenger.lat,
+                    lon: passenger.lon,
+                    route: null,
+                    routeIdx: 0,
+                  };
                 }
                 // 向乘客直线移动
                 const stepMeters = SIM_SPEED_MPS * (SIM_INTERVAL_MS / 1000);
