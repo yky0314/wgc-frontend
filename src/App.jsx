@@ -125,6 +125,8 @@ function App() {
   // 前往乘客的 OSRM 导航路线 ref（独立于随机游走路线）
   const driverNavRouteRef = useRef(null);
   const driverNavRouteIdxRef = useRef(0);
+  // 竞争司机导航路线请求去重（避免每帧重复请求）
+  const pendingNavRouteRids = useRef(new Set());
 
   const selectedPassengerRef = useRef(null);
   const isSimulatingRef = useRef(false);
@@ -274,6 +276,9 @@ function App() {
         occupied: false,
         route: null,
         routeIdx: 0,
+        navRoute: null,
+        navRouteIdx: 0,
+        navPassengerId: null,
         spawned: true,
       },
     ]);
@@ -342,6 +347,9 @@ function App() {
           occupied: false,
           route: null,
           routeIdx: 0,
+          navRoute: null,
+          navRouteIdx: 0,
+          navPassengerId: null,
         }));
         setRivalDrivers(rivalData);
         message.success(`Fetched ${rivalData.length} rival drivers`);
@@ -692,6 +700,7 @@ function App() {
       const toRemovePassengerIds = [];
       const toRemoveDriverIds = [];
       const routeRequests = [];
+      const navRouteRequests = [];
 
       // 同步计算每个竞争司机的新位置
       const updatedRivals = currentRivals.map((d) => {
@@ -711,16 +720,49 @@ function App() {
               // 到达！乘客消失，竞争司机标记为 occupied（紫色）继续游走
               toRemovePassengerIds.push(matchedPassengerId);
               toRemoveDriverIds.push(d.id);
+              pendingNavRouteRids.current.delete(d.id);
               return {
                 ...d,
                 lat: passenger.lat,
                 lon: passenger.lon,
                 occupied: true,
+                navRoute: null,
+                navRouteIdx: 0,
+                navPassengerId: null,
                 route: null,
                 routeIdx: 0,
               };
             }
-            // 向乘客直线移动
+
+            // 若匹配乘客变了，清除旧导航路线
+            let navRoute = d.navRoute;
+            let navRouteIdx = d.navRouteIdx;
+            if (d.navPassengerId !== matchedPassengerId) {
+              navRoute = null;
+              navRouteIdx = 0;
+              pendingNavRouteRids.current.delete(d.id);
+            }
+
+            // 优先沿 OSRM 导航路线行驶
+            if (navRoute && navRouteIdx < navRoute.length) {
+              const [lat, lon] = navRoute[navRouteIdx];
+              return {
+                ...d,
+                lat,
+                lon,
+                navRoute,
+                navRouteIdx: navRouteIdx + 1,
+                navPassengerId: matchedPassengerId,
+              };
+            }
+
+            // 尚无导航路线：请求一次（用 pending Set 避免重复请求）
+            if (!pendingNavRouteRids.current.has(d.id)) {
+              navRouteRequests.push({ d, passenger, matchedPassengerId });
+              pendingNavRouteRids.current.add(d.id);
+            }
+
+            // 路线获取中：直线 fallback
             const stepMeters = SIM_SPEED_MPS * (SIM_INTERVAL_MS / 1000);
             const result = moveTowards(
               d.lat,
@@ -729,17 +771,32 @@ function App() {
               passenger.lng,
               stepMeters
             );
-            return { ...d, lat: result.lat, lon: result.lon };
+            return {
+              ...d,
+              lat: result.lat,
+              lon: result.lon,
+              navRoute,
+              navRouteIdx,
+              navPassengerId: matchedPassengerId,
+            };
           }
         }
 
-        // 无匹配或乘客消失：随机游走
+        // 无匹配或乘客消失：随机游走，清空导航路线
         if (!d.route || d.routeIdx >= d.route.length) {
           routeRequests.push(d);
-          return d;
+          return { ...d, navRoute: null, navRouteIdx: 0, navPassengerId: null };
         }
         const [lat, lon] = d.route[d.routeIdx];
-        return { ...d, lat, lon, routeIdx: d.routeIdx + 1 };
+        return {
+          ...d,
+          lat,
+          lon,
+          routeIdx: d.routeIdx + 1,
+          navRoute: null,
+          navRouteIdx: 0,
+          navPassengerId: null,
+        };
       });
 
       // 先批量更新状态（同步部分已全部计算完毕）
@@ -762,7 +819,7 @@ function App() {
         });
       }
 
-      // 为需要新路线的竞争司机异步规划路线
+      // 为需要随机游走路线的竞争司机异步规划路线
       for (const d of routeRequests) {
         const [destLat, destLon] = pickRandomDestinationNear(
           d.lat,
@@ -774,6 +831,31 @@ function App() {
           setRivalDrivers((prev) =>
             prev.map((rd) =>
               rd.id === d.id ? { ...rd, route, routeIdx: 0 } : rd
+            )
+          );
+        }
+      }
+
+      // 为需要导航路线（前往乘客）的竞争司机异步规划路线
+      for (const { d, passenger, matchedPassengerId } of navRouteRequests) {
+        const route = await getRoute(
+          d.lat,
+          d.lon,
+          passenger.lat,
+          passenger.lng
+        );
+        pendingNavRouteRids.current.delete(d.id);
+        if (route && route.length > 1) {
+          setRivalDrivers((prev) =>
+            prev.map((rd) =>
+              rd.id === d.id && matchesRef.current[rd.id] === matchedPassengerId
+                ? {
+                    ...rd,
+                    navRoute: route,
+                    navRouteIdx: 0,
+                    navPassengerId: matchedPassengerId,
+                  }
+                : rd
             )
           );
         }
