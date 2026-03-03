@@ -156,6 +156,25 @@ function App() {
     matchesRef.current = matches;
   }, [matches]);
 
+  // ── 当匹配结果更新时，主司机朝匹配乘客移动 ────────────────────────
+  useEffect(() => {
+    const matchedPassengerId = matches[`d_${driverId}`];
+    if (matchedPassengerId) {
+      const matchedPassenger = passengers.find(
+        (p) => p.id === matchedPassengerId
+      );
+      if (matchedPassenger && matchedPassenger.id !== selectedPassenger?.id) {
+        setSelectedPassenger(matchedPassenger);
+        selectedPassengerRef.current = matchedPassenger;
+        // 清空随机游走路线，避免继续沿旧路线走
+        driverRouteRef.current = null;
+        driverRouteIdxRef.current = 0;
+        setDriverRoute(null);
+        setDriverRouteIdx(0);
+      }
+    }
+  }, [matches, passengers, driverId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── 乘客忍耐超时：从列表中移除 ────────────────────────────────────────
   const removePassengerById = useCallback((passengerId) => {
     setPassengers((prev) => prev.filter((p) => p.id !== passengerId));
@@ -463,6 +482,8 @@ function App() {
       message.info("Driver started moving randomly");
     }
 
+    // 立即触发一次匹配，不等 10 秒
+    performMatching();
     // 启动持续匹配（无论初始是否有乘客，都要持续匹配新出现的）
     matchTimerRef.current = setInterval(performMatching, MATCH_INTERVAL);
 
@@ -603,6 +624,20 @@ function App() {
             driverRouteIdxRef.current = 0;
             setDriverRoute(newRoute);
             setDriverRouteIdx(0);
+          } else {
+            // OSRM 获取路线失败时，直接朝随机方向移动，避免卡在原地
+            const stepMeters = SIM_SPEED_MPS * (SIM_INTERVAL_MS / 1000);
+            const result = moveTowards(
+              curLat2,
+              curLon2,
+              destLat,
+              destLon,
+              stepMeters
+            );
+            posRef.current = { lat: result.lat, lon: result.lon };
+            setCurrentLat(result.lat);
+            setCurrentLon(result.lon);
+            setDriverPath((prev) => [...prev, [result.lon, result.lat]]);
           }
           return;
         }
@@ -763,7 +798,7 @@ function App() {
   const getPassengerIcon = (matched) => ({
     url: matched
       ? "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxOCIgZmlsbD0iIzUyYzQxYSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjE1IiByPSI1IiBmaWxsPSIjZmZmIi8+PHBhdGggZD0iTTEyIDI4IFExMiAyMCAyMCAyMCBRMjggMjAgMjggMjgiIGZpbGw9IiNmZmYiLz48L3N2Zz4="
-      : "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxOCIgZmlsbD0iIzUyYzQxYSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjE1IiByPSI1IiBmaWxsPSIjZmZmIi8+PHBhdGggZD0iTTEyIDI4IFExMiAyMCAyMCAyMCBRMjggMjAgMjggMjgiIGZpbGw9IiNmZmYiLz48L3N2Zz4=",
+      : "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxOCIgZmlsbD0iI2ZhOGMxNiIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjE1IiByPSI1IiBmaWxsPSIjZmZmIi8+PHBhdGggZD0iTTEyIDI4IFExMiAyMCAyMCAyMCBRMjggMjAgMjggMjgiIGZpbGw9IiNmZmYiLz48L3N2Zz4=",
     width: 40,
     height: 40,
   });
