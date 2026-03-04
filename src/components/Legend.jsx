@@ -6,6 +6,7 @@ function Legend() {
     <div className="legend">
       <div className="legend-title">Map Legend</div>
       <div className="legend-items">
+        {/* ── Main Driver ── */}
         <div className="legend-item">
           <svg width="32" height="32" viewBox="0 0 32 32">
             <circle
@@ -21,7 +22,7 @@ function Legend() {
               fill="#fff"
             />
           </svg>
-          <span>Main Driver</span>
+          <span>Main Driver (Idle)</span>
         </div>
         <div className="legend-item">
           <svg width="32" height="32" viewBox="0 0 32 32">
@@ -29,7 +30,7 @@ function Legend() {
               cx="16"
               cy="16"
               r="14"
-              fill="#ff4d4f"
+              fill="#52c41a"
               stroke="#fff"
               strokeWidth="2"
             />
@@ -38,45 +39,7 @@ function Legend() {
               fill="#fff"
             />
           </svg>
-          <span>Rival Driver</span>
-        </div>
-        <div className="legend-item">
-          <svg width="28" height="28" viewBox="0 0 28 28">
-            <circle
-              cx="14"
-              cy="14"
-              r="12"
-              fill="#52c41a"
-              stroke="#fff"
-              strokeWidth="2"
-            />
-            <circle cx="14" cy="10" r="4" fill="#fff" />
-            <path d="M8 22 Q8 16 14 16 Q20 16 20 22" fill="#fff" />
-          </svg>
-          <span>Passenger</span>
-        </div>
-        <div className="legend-item">
-          <svg width="28" height="28" viewBox="0 0 28 28">
-            <circle
-              cx="14"
-              cy="14"
-              r="12"
-              fill="#52c41a"
-              stroke="#fff"
-              strokeWidth="2"
-            />
-            <text
-              x="50%"
-              y="50%"
-              fontSize="16"
-              textAnchor="middle"
-              dy=".3em"
-              fill="#fff"
-            >
-              ✓
-            </text>
-          </svg>
-          <span>Matched</span>
+          <span>Driver (Going to Pickup)</span>
         </div>
         <div className="legend-item">
           <svg width="32" height="32" viewBox="0 0 32 32">
@@ -93,8 +56,46 @@ function Legend() {
               fill="#fff"
             />
           </svg>
-          <span>Occupied Driver</span>
+          <span>Driver (Carrying Passenger)</span>
         </div>
+
+        {/* ── Rival Driver ── */}
+        <div className="legend-item">
+          <svg width="32" height="32" viewBox="0 0 32 32">
+            <circle
+              cx="16"
+              cy="16"
+              r="14"
+              fill="#ff4d4f"
+              stroke="#fff"
+              strokeWidth="2"
+            />
+            <path
+              d="M16 8 L20 14 L12 14 Z M14 16 L18 16 L18 22 L14 22 Z"
+              fill="#fff"
+            />
+          </svg>
+          <span>Rival Driver (Idle)</span>
+        </div>
+
+        {/* ── Passenger ── */}
+        <div className="legend-item">
+          <svg width="28" height="28" viewBox="0 0 28 28">
+            <circle
+              cx="14"
+              cy="14"
+              r="12"
+              fill="#fa8c16"
+              stroke="#fff"
+              strokeWidth="2"
+            />
+            <circle cx="14" cy="10" r="4" fill="#fff" />
+            <path d="M8 22 Q8 16 14 16 Q20 16 20 22" fill="#fff" />
+          </svg>
+          <span>Passenger (Waiting)</span>
+        </div>
+
+        {/* ── Lines ── */}
         <div className="legend-item">
           <svg width="40" height="4" viewBox="0 0 40 4">
             <line
