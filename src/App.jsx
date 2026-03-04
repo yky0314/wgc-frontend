@@ -29,7 +29,7 @@ const INITIAL_VIEW_STATE = {
 };
 
 const SIM_INTERVAL_MS = 600;
-const SIM_SPEED_MPS = 6;
+const SIM_SPEED_MPS = 18;
 const ARRIVAL_THRESHOLD_M = 30;
 const MATCH_INTERVAL = 10000;
 
@@ -813,19 +813,40 @@ function App() {
       getWidth: 4,
       widthMinPixels: 2,
     }),
+    // 用三个独立 Layer 避免 DeckGL 异步加载图标导致闪烁/消失
     new IconLayer({
-      id: "main-driver",
-      data: [{ position: [currentLon, currentLat], status: driverStatus }],
+      id: "main-driver-idle",
+      data:
+        driverStatus === "idle" ? [{ position: [currentLon, currentLat] }] : [],
       getPosition: (d) => d.position,
-      getIcon: (d) => ({
-        url: getDriverIconUrl(d.status),
-        width: 48,
-        height: 48,
-      }),
+      getIcon: () => ({ url: ICON_DRIVER_IDLE, width: 48, height: 48 }),
       getSize: 48,
       sizeScale: 1,
       pickable: false,
-      updateTriggers: { getIcon: [driverStatus] },
+    }),
+    new IconLayer({
+      id: "main-driver-matched",
+      data:
+        driverStatus === "matched"
+          ? [{ position: [currentLon, currentLat] }]
+          : [],
+      getPosition: (d) => d.position,
+      getIcon: () => ({ url: ICON_DRIVER_MATCHED, width: 48, height: 48 }),
+      getSize: 48,
+      sizeScale: 1,
+      pickable: false,
+    }),
+    new IconLayer({
+      id: "main-driver-occupied",
+      data:
+        driverStatus === "occupied"
+          ? [{ position: [currentLon, currentLat] }]
+          : [],
+      getPosition: (d) => d.position,
+      getIcon: () => ({ url: ICON_DRIVER_OCCUPIED, width: 48, height: 48 }),
+      getSize: 48,
+      sizeScale: 1,
+      pickable: false,
     }),
     new IconLayer({
       id: "passengers",
