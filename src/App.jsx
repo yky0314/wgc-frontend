@@ -33,13 +33,13 @@ const SIM_SPEED_MPS = 18;
 const ARRIVAL_THRESHOLD_M = 30;
 const MATCH_INTERVAL = 10000;
 
-const PASSENGER_SPAWN_MIN = 5000;
-const PASSENGER_SPAWN_MAX = 15000;
-const PASSENGER_PATIENCE_MIN = 15000;
-const PASSENGER_PATIENCE_MAX = 35000;
-const RIVAL_SPAWN_MIN = 15000;
-const RIVAL_SPAWN_MAX = 30000;
-const PASSENGER_SPAWN_COUNT = 2;
+const PASSENGER_SPAWN_MIN = 2000;
+const PASSENGER_SPAWN_MAX = 5000;
+const PASSENGER_PATIENCE_MIN = 60000;
+const PASSENGER_PATIENCE_MAX = 120000;
+const RIVAL_SPAWN_MIN = 5000;
+const RIVAL_SPAWN_MAX = 10000;
+const PASSENGER_SPAWN_COUNT = 10;
 const RIVAL_SPAWN_RADIUS_DEG = 0.06;
 const PASSENGER_SPAWN_RADIUS_DEG = 0.05;
 const DROPOFF_RADIUS_DEG = 0.04;
@@ -481,7 +481,7 @@ function App() {
       const { lat: curLat, lon: curLon } = posRef.current;
       const status = driverStatusRef.current;
 
-      // ── 状态：matched（前往接乘客，直线） ──────────────────────────
+      // ── 状态：matched（前往接乘客） ──────────────────────────
       if (status === "matched") {
         const target = selectedPassengerRef.current;
         // 乘客消失（超时）→ 回 idle
@@ -490,6 +490,8 @@ function App() {
           setDriverStatus("idle");
           selectedPassengerRef.current = null;
           setSelectedPassenger(null);
+          driverRouteRef.current = null;
+          driverRouteIdxRef.current = 0;
           return;
         }
 
@@ -526,24 +528,51 @@ function App() {
           setDriverStatus("occupied");
           selectedPassengerRef.current = null;
           setSelectedPassenger(null);
+          driverRouteRef.current = null;
+          driverRouteIdxRef.current = 0;
           message.success(`Picked up ${target.id}! Delivering passenger...`);
           return;
         }
 
-        // 直线前进
+        if (
+          !driverRouteRef.current ||
+          driverRouteIdxRef.current >= driverRouteRef.current.length
+        ) {
+          const route = await getRoute(curLat, curLon, target.lat, target.lng);
+          if (route && route.length > 1) {
+            driverRouteRef.current = route;
+            driverRouteIdxRef.current = 0;
+          } else {
+            const result = moveTowards(
+              curLat,
+              curLon,
+              target.lat,
+              target.lng,
+              stepMeters
+            );
+            posRef.current = { lat: result.lat, lon: result.lon };
+            setCurrentLat(result.lat);
+            setCurrentLon(result.lon);
+            setDriverPath((prev) => [...prev, [result.lon, result.lat]]);
+          }
+          return;
+        }
+
+        const targetPoint = driverRouteRef.current[driverRouteIdxRef.current];
         const result = moveTowards(
           curLat,
           curLon,
-          target.lat,
-          target.lng,
+          targetPoint[0],
+          targetPoint[1],
           stepMeters
         );
+        if (result.arrived) driverRouteIdxRef.current++;
         posRef.current = { lat: result.lat, lon: result.lon };
         setCurrentLat(result.lat);
         setCurrentLon(result.lon);
         setDriverPath((prev) => [...prev, [result.lon, result.lat]]);
 
-        // ── 状态：occupied（送客到目的地，直线） ──────────────────────
+        // ── 状态：occupied（送客到目的地） ──────────────────────
       } else if (status === "occupied") {
         let dest = driverDropoffDestRef.current;
         if (!dest) {
@@ -562,18 +591,45 @@ function App() {
           driverDropoffDestRef.current = null;
           driverStatusRef.current = "idle";
           setDriverStatus("idle");
+          driverRouteRef.current = null;
+          driverRouteIdxRef.current = 0;
           message.info("Passenger delivered. Driver is now idle.");
           return;
         }
 
-        // 直线前进
+        if (
+          !driverRouteRef.current ||
+          driverRouteIdxRef.current >= driverRouteRef.current.length
+        ) {
+          const route = await getRoute(curLat, curLon, dest.lat, dest.lon);
+          if (route && route.length > 1) {
+            driverRouteRef.current = route;
+            driverRouteIdxRef.current = 0;
+          } else {
+            const result = moveTowards(
+              curLat,
+              curLon,
+              dest.lat,
+              dest.lon,
+              stepMeters
+            );
+            posRef.current = { lat: result.lat, lon: result.lon };
+            setCurrentLat(result.lat);
+            setCurrentLon(result.lon);
+            setDriverPath((prev) => [...prev, [result.lon, result.lat]]);
+          }
+          return;
+        }
+
+        const targetPoint = driverRouteRef.current[driverRouteIdxRef.current];
         const result = moveTowards(
           curLat,
           curLon,
-          dest.lat,
-          dest.lon,
+          targetPoint[0],
+          targetPoint[1],
           stepMeters
         );
+        if (result.arrived) driverRouteIdxRef.current++;
         posRef.current = { lat: result.lat, lon: result.lon };
         setCurrentLat(result.lat);
         setCurrentLon(result.lon);
@@ -581,18 +637,18 @@ function App() {
 
         // ── 状态：idle（OSRM 随机游走） ─────────────────────────────────
       } else {
-        const route = driverRouteRef.current;
-        const routeIdx = driverRouteIdxRef.current;
-
-        if (!route || routeIdx >= route.length) {
+        if (
+          !driverRouteRef.current ||
+          driverRouteIdxRef.current >= driverRouteRef.current.length
+        ) {
           const [destLat, destLon] = pickRandomDestinationNear(
             curLat,
             curLon,
             0.04
           );
-          const newRoute = await getRoute(curLat, curLon, destLat, destLon);
-          if (newRoute && newRoute.length > 1) {
-            driverRouteRef.current = newRoute;
+          const route = await getRoute(curLat, curLon, destLat, destLon);
+          if (route && route.length > 1) {
+            driverRouteRef.current = route;
             driverRouteIdxRef.current = 0;
           } else {
             const result = moveTowards(
@@ -610,12 +666,19 @@ function App() {
           return;
         }
 
-        const [lat, lon] = route[routeIdx];
-        driverRouteIdxRef.current = routeIdx + 1;
-        posRef.current = { lat, lon };
-        setCurrentLat(lat);
-        setCurrentLon(lon);
-        setDriverPath((prev) => [...prev, [lon, lat]]);
+        const targetPoint = driverRouteRef.current[driverRouteIdxRef.current];
+        const result = moveTowards(
+          curLat,
+          curLon,
+          targetPoint[0],
+          targetPoint[1],
+          stepMeters
+        );
+        if (result.arrived) driverRouteIdxRef.current++;
+        posRef.current = { lat: result.lat, lon: result.lon };
+        setCurrentLat(result.lat);
+        setCurrentLon(result.lon);
+        setDriverPath((prev) => [...prev, [result.lon, result.lat]]);
       }
 
       // 上报位置
@@ -657,11 +720,10 @@ function App() {
       const routeRequests = [];
 
       const updatedRivals = currentRivals.map((d) => {
-        // ── matched：直线前往乘客 ────────────────────────────────────
+        // ── matched：前往乘客 ────────────────────────────────────
         if (d.status === "matched") {
           const matchedPid = currentMatches[d.id];
           if (!matchedPid) {
-            // 匹配消失（乘客超时等），回 idle
             return { ...d, status: "idle", route: null, routeIdx: 0 };
           }
           const passenger = passengersRef.current.find(
@@ -678,7 +740,6 @@ function App() {
             passenger.lng
           );
           if (dist <= ARRIVAL_THRESHOLD_M) {
-            // 接到乘客！乘客消失，切换为 occupied
             toRemovePassengerIds.push(matchedPid);
             toRemoveMatchIds.push(d.id);
             const [dLat, dLon] = pickRandomDestinationNear(
@@ -697,18 +758,34 @@ function App() {
             };
           }
 
-          // 直线前进
+          if (!d.route || d.routeIdx >= d.route.length) {
+            routeRequests.push({
+              driverId: d.id,
+              lat: d.lat,
+              lon: d.lon,
+              toLat: passenger.lat,
+              toLon: passenger.lng,
+            });
+            return d;
+          }
+
+          const targetPoint = d.route[d.routeIdx];
           const result = moveTowards(
             d.lat,
             d.lon,
-            passenger.lat,
-            passenger.lng,
+            targetPoint[0],
+            targetPoint[1],
             stepMeters
           );
-          return { ...d, lat: result.lat, lon: result.lon };
+          return {
+            ...d,
+            lat: result.lat,
+            lon: result.lon,
+            routeIdx: result.arrived ? d.routeIdx + 1 : d.routeIdx,
+          };
         }
 
-        // ── occupied：直线送客到目的地 ──────────────────────────────
+        // ── occupied：送客到目的地 ──────────────────────────────
         if (d.status === "occupied") {
           let dest = d.dropoffDest;
           if (!dest) {
@@ -721,7 +798,6 @@ function App() {
           }
           const dist = calculateDistance(d.lat, d.lon, dest.lat, dest.lon);
           if (dist <= ARRIVAL_THRESHOLD_M) {
-            // 送达，回到 idle
             return {
               ...d,
               status: "idle",
@@ -730,29 +806,70 @@ function App() {
               routeIdx: 0,
             };
           }
+
+          if (!d.route || d.routeIdx >= d.route.length) {
+            routeRequests.push({
+              driverId: d.id,
+              lat: d.lat,
+              lon: d.lon,
+              toLat: dest.lat,
+              toLon: dest.lon,
+            });
+            return { ...d, dropoffDest: dest };
+          }
+
+          const targetPoint = d.route[d.routeIdx];
           const result = moveTowards(
             d.lat,
             d.lon,
-            dest.lat,
-            dest.lon,
+            targetPoint[0],
+            targetPoint[1],
             stepMeters
           );
-          return { ...d, lat: result.lat, lon: result.lon, dropoffDest: dest };
+          return {
+            ...d,
+            lat: result.lat,
+            lon: result.lon,
+            routeIdx: result.arrived ? d.routeIdx + 1 : d.routeIdx,
+            dropoffDest: dest,
+          };
         }
 
         // ── idle：检查是否新匹配；否则 OSRM 随机游走 ────────────────
         if (currentMatches[d.id]) {
-          // 新匹配到乘客，切换为 matched（下一帧开始移动）
           return { ...d, status: "matched", route: null, routeIdx: 0 };
         }
 
-        // 随机游走
         if (!d.route || d.routeIdx >= d.route.length) {
-          routeRequests.push(d);
+          const [destLat, destLon] = pickRandomDestinationNear(
+            d.lat,
+            d.lon,
+            0.04
+          );
+          routeRequests.push({
+            driverId: d.id,
+            lat: d.lat,
+            lon: d.lon,
+            toLat: destLat,
+            toLon: destLon,
+          });
           return d;
         }
-        const [lat, lon] = d.route[d.routeIdx];
-        return { ...d, lat, lon, routeIdx: d.routeIdx + 1 };
+
+        const targetPoint = d.route[d.routeIdx];
+        const result = moveTowards(
+          d.lat,
+          d.lon,
+          targetPoint[0],
+          targetPoint[1],
+          stepMeters
+        );
+        return {
+          ...d,
+          lat: result.lat,
+          lon: result.lon,
+          routeIdx: result.arrived ? d.routeIdx + 1 : d.routeIdx,
+        };
       });
 
       // 批量更新状态
@@ -775,20 +892,13 @@ function App() {
         });
       }
 
-      // 为 idle 司机异步规划随机游走路线
-      for (const d of routeRequests) {
-        const [destLat, destLon] = pickRandomDestinationNear(
-          d.lat,
-          d.lon,
-          0.04
-        );
-        const route = await getRoute(d.lat, d.lon, destLat, destLon);
+      // 为需要的司机异步规划路线
+      for (const req of routeRequests) {
+        const route = await getRoute(req.lat, req.lon, req.toLat, req.toLon);
         if (route && route.length > 1) {
           setRivalDrivers((prev) =>
             prev.map((rd) =>
-              rd.id === d.id && rd.status === "idle"
-                ? { ...rd, route, routeIdx: 0 }
-                : rd
+              rd.id === req.driverId ? { ...rd, route, routeIdx: 0 } : rd
             )
           );
         }
@@ -820,7 +930,7 @@ function App() {
         driverStatus === "idle" ? [{ position: [currentLon, currentLat] }] : [],
       getPosition: (d) => d.position,
       getIcon: () => ({ url: ICON_DRIVER_IDLE, width: 48, height: 48 }),
-      getSize: 48,
+      getSize: 24,
       sizeScale: 1,
       pickable: false,
     }),
@@ -832,7 +942,7 @@ function App() {
           : [],
       getPosition: (d) => d.position,
       getIcon: () => ({ url: ICON_DRIVER_MATCHED, width: 48, height: 48 }),
-      getSize: 48,
+      getSize: 24,
       sizeScale: 1,
       pickable: false,
     }),
@@ -844,7 +954,7 @@ function App() {
           : [],
       getPosition: (d) => d.position,
       getIcon: () => ({ url: ICON_DRIVER_OCCUPIED, width: 48, height: 48 }),
-      getSize: 48,
+      getSize: 24,
       sizeScale: 1,
       pickable: false,
     }),
@@ -860,7 +970,7 @@ function App() {
         width: 40,
         height: 40,
       }),
-      getSize: 40,
+      getSize: 16,
       sizeScale: 1,
       pickable: false,
     }),
@@ -877,7 +987,7 @@ function App() {
           width: 48,
           height: 48,
         }),
-        getSize: 36,
+        getSize: 24,
         sizeScale: 1,
         pickable: false,
         updateTriggers: {
@@ -922,7 +1032,7 @@ function App() {
       >
         <Map
           mapboxAccessToken={MAPBOX_TOKEN}
-          mapStyle="mapbox://styles/mapbox/streets-v12"
+          mapStyle="mapbox://styles/mapbox/dark-v11"
         />
       </DeckGL>
       <ControlPanel
