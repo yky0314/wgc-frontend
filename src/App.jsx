@@ -3,8 +3,14 @@ import { useTranslation } from "react-i18next";
 import { message } from "antd";
 import DeckGL from "@deck.gl/react";
 import { Map } from "react-map-gl";
-import { IconLayer, PathLayer, LineLayer } from "@deck.gl/layers";
+import {
+  IconLayer,
+  PathLayer,
+  LineLayer,
+  ScatterplotLayer,
+} from "@deck.gl/layers";
 import ControlPanel from "./components/ControlPanel";
+import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import Legend from "./components/Legend";
 import driversAPI from "./services/drivers";
 import {
@@ -19,6 +25,18 @@ import "./App.css";
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_LAT = 1.2847;
 const DEFAULT_LON = 103.8522;
+
+// 粗略的新加坡陆地锚点，用于防止背景车落在海上
+const SG_LAND_ANCHORS = [
+  { lat: 1.2847, lon: 103.8522 }, // CBD
+  { lat: 1.3005, lon: 103.8443 }, // Orchard
+  { lat: 1.314, lon: 103.8933 }, // Geylang
+  { lat: 1.2989, lon: 103.7876 }, // Buona Vista
+  { lat: 1.3329, lon: 103.7436 }, // Jurong East
+  { lat: 1.3521, lon: 103.9448 }, // Tampines
+  { lat: 1.3703, lon: 103.8497 }, // Ang Mo Kio
+  { lat: 1.4361, lon: 103.7865 }, // Woodlands
+];
 
 const INITIAL_VIEW_STATE = {
   longitude: DEFAULT_LON,
@@ -117,6 +135,7 @@ function App() {
   const [matches, setMatches] = useState({});
   const [isSimulating, setIsSimulating] = useState(false);
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
+  const [bgData, setBgData] = useState({ taxis: [], passengers: [] });
 
   const simulationTimerRef = useRef(null);
   const matchTimerRef = useRef(null);
@@ -158,6 +177,10 @@ function App() {
   useEffect(() => {
     driverStatusRef.current = driverStatus;
   }, [driverStatus]);
+
+  const handleBgDataUpdate = useCallback((data) => {
+    setBgData(data);
+  }, []);
 
   // ── 匹配结果 → 主司机状态切换 idle→matched ────────────────────────────
   useEffect(() => {
@@ -915,6 +938,35 @@ function App() {
 
   // ── DeckGL 图层 ───────────────────────────────────────────────────────
   const layers = [
+    new IconLayer({
+      id: "bg-taxis-layer",
+      data: bgData.taxis,
+      getPosition: (d) => [d.lon, d.lat],
+      getIcon: (d) => ({
+        url: getRivalIconUrl(d.status),
+        width: 48,
+        height: 48,
+      }),
+      getSize: 18,
+      sizeScale: 1,
+      pickable: false,
+      transitions: {
+        getPosition: 100,
+      },
+    }),
+    new IconLayer({
+      id: "bg-passengers-layer",
+      data: bgData.passengers,
+      getPosition: (d) => [d.lon, d.lat],
+      getIcon: () => ({
+        url: ICON_PASSENGER,
+        width: 40,
+        height: 40,
+      }),
+      getSize: 12,
+      sizeScale: 1,
+      pickable: false,
+    }),
     new PathLayer({
       id: "driver-path",
       data: [{ path: driverPath }],
@@ -1020,12 +1072,24 @@ function App() {
       getWidth: 3,
       widthMinPixels: 2,
     }),
+    // 背景司机的匹配连线
+    new LineLayer({
+      id: "bg-match-lines",
+      data: (bgData.taxis || []).filter(
+        (t) => t.status === "matched" && t.targetLat && t.targetLon
+      ),
+      getSourcePosition: (d) => [d.lon, d.lat],
+      getTargetPosition: (d) => [d.targetLon, d.targetLat],
+      getColor: [82, 196, 26, 150],
+      getWidth: 2,
+      widthMinPixels: 1.5,
+    }),
   ].filter(Boolean);
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
       <DeckGL
-        initialViewState={viewState}
+        viewState={viewState}
         controller={true}
         layers={layers}
         onViewStateChange={({ viewState: vs }) => setViewState(vs)}
@@ -1035,6 +1099,13 @@ function App() {
           mapStyle="mapbox://styles/mapbox/dark-v11"
         />
       </DeckGL>
+      <AnalyticsDashboard
+        isOnline={isOnline}
+        currentLat={currentLat}
+        currentLon={currentLon}
+        roadAnchors={SG_LAND_ANCHORS}
+        onBgDataUpdate={handleBgDataUpdate}
+      />
       <ControlPanel
         driverId={driverId}
         isOnline={isOnline}
