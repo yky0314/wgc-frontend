@@ -1,7 +1,7 @@
 const fs = require("fs");
 const http = require("http");
 
-// 覆盖新加坡全岛主要市镇和商圈的高密度锚点
+// 覆盖新加坡全岛主要市镇和商圈的高密度锚点 (32个)
 const points = [
   { name: "Changi Airport", lat: 1.3644, lon: 103.9915 },
   { name: "Tampines", lat: 1.3521, lon: 103.9448 },
@@ -37,9 +37,9 @@ const points = [
   { name: "Sentosa", lat: 1.2494, lon: 103.8303 },
 ];
 
-// 高密度蛛网连线：让相邻/相近的区域互相连接
+// 构建密集的真实网格
 const pairs = [
-  // 东部
+  // 东区互联
   [0, 1],
   [0, 2],
   [1, 2],
@@ -49,15 +49,13 @@ const pairs = [
   [3, 4],
   [3, 5],
   [4, 5],
-  [4, 16],
-  // 东北部
+  // 东北与中部互联
   [6, 7],
   [7, 8],
   [8, 9],
   [7, 18],
   [9, 10],
   [9, 4],
-  // 中部/北部
   [18, 19],
   [19, 20],
   [10, 11],
@@ -65,14 +63,14 @@ const pairs = [
   [12, 13],
   [13, 14],
   [10, 18],
-  // 核心区
+  // 核心区微循环
   [14, 15],
   [14, 16],
   [15, 17],
   [16, 15],
   [17, 30],
   [15, 31],
-  // 西北部/西部
+  // 西北部与西区
   [20, 21],
   [21, 22],
   [22, 23],
@@ -87,18 +85,17 @@ const pairs = [
   [28, 14],
   [30, 31],
   [27, 23],
-  // 一些跨区主干道（增加长途路线）
-  [0, 16], // ECP
-  [1, 10], // TPE/CTE
-  [10, 21], // BKE
-  [20, 24], // KJE/PIE
-  [3, 27], // PIE (东到西)
-  [4, 13], // PIE (中段)
-  [12, 28], // Lornie/Queensway
-  [7, 15], // KPE
-  [18, 14], // CTE
-  [22, 14], // BKE/PIE
-  // 增加毛细血管短途
+  // 超长干道骨架 (PIE, ECP, CTE, AYE等近似路线)
+  [0, 16],
+  [1, 10],
+  [10, 21],
+  [20, 24],
+  [3, 27],
+  [4, 13],
+  [12, 28],
+  [7, 15],
+  [18, 14],
+  [22, 14],
   [1, 3],
   [8, 11],
   [11, 13],
@@ -112,62 +109,20 @@ const pairs = [
   [17, 15],
   [30, 15],
   [24, 28],
+  // 为了路网更密，再补充一些跨节点
+  [0, 5],
+  [1, 8],
+  [3, 15],
+  [26, 27],
+  [21, 12],
+  [19, 22],
+  [4, 14],
 ];
 
 const routes = [];
-let completed = 0;
-
-function generateFallbackRoute(p1, p2) {
-  const pts = [];
-  const steps = 100;
-  for (let i = 0; i <= steps; i++) {
-    pts.push({
-      lat: p1.lat + (p2.lat - p1.lat) * (i / steps),
-      lon: p1.lon + (p2.lon - p1.lon) * (i / steps),
-    });
-  }
-  return pts;
-}
 
 function fetchRoute(p1, p2) {
-  const url = `http://router.project-osrm.org/route/v1/driving/${p1.lon},${p1.lat};${p2.lon},${p2.lat}?overview=full&geometries=geojson`;
-  http
-    .get(url, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.routes && json.routes.length > 0) {
-            const coords = json.routes[0].geometry.coordinates.map((c) => ({
-              lat: c[1],
-              lon: c[0],
-            }));
-            routes.push(coords);
-            console.log(
-              `Fetched route: ${p1.name} -> ${p2.name} (${coords.length} points)`
-            );
-          } else {
-            routes.push(generateFallbackRoute(p1, p2));
-          }
-        } catch (e) {
-          console.log(`Failed to parse route: ${p1.name} -> ${p2.name}`);
-          routes.push(generateFallbackRoute(p1, p2));
-        }
-        checkDone();
-      });
-    })
-    .on("error", (e) => {
-      console.log(
-        `Error fetching route: ${p1.name} -> ${p2.name} - ${e.message}`
-      );
-      routes.push(generateFallbackRoute(p1, p2));
-      checkDone();
-    });
-}
-
-function fetchRouteAsync(p1, p2) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = `http://router.project-osrm.org/route/v1/driving/${p1.lon},${p1.lat};${p2.lon},${p2.lat}?overview=full&geometries=geojson`;
     http
       .get(url, (res) => {
@@ -181,44 +136,72 @@ function fetchRouteAsync(p1, p2) {
                 lat: c[1],
                 lon: c[0],
               }));
-              routes.push(coords);
-              console.log(
-                `Fetched route: ${p1.name} -> ${p2.name} (${coords.length} points)`
-              );
+              resolve(coords);
             } else {
-              routes.push(generateFallbackRoute(p1, p2));
+              reject(new Error("No route found"));
             }
           } catch (e) {
-            console.log(`Failed to parse route: ${p1.name} -> ${p2.name}`);
-            routes.push(generateFallbackRoute(p1, p2));
+            reject(e);
           }
-          resolve();
         });
       })
-      .on("error", (e) => {
-        console.log(
-          `Error fetching route: ${p1.name} -> ${p2.name} - ${e.message}`
-        );
-        routes.push(generateFallbackRoute(p1, p2));
-        resolve();
-      });
+      .on("error", (e) => reject(e));
   });
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function run() {
+  console.log(`Will fetch ${pairs.length} routes in total. Please wait...`);
+
   for (let i = 0; i < pairs.length; i++) {
-    const pair = pairs[i];
-    await fetchRouteAsync(points[pair[0]], points[pair[1]]);
-    // 延迟 500ms 防止被封
-    await new Promise((res) => setTimeout(res, 500));
+    const p1 = points[pairs[i][0]];
+    const p2 = points[pairs[i][1]];
+
+    let retries = 3;
+    let success = false;
+
+    while (retries > 0 && !success) {
+      try {
+        const coords = await fetchRoute(p1, p2);
+        routes.push(coords);
+        console.log(
+          `[${i + 1}/${pairs.length}] Fetched route: ${p1.name} -> ${
+            p2.name
+          } (${coords.length} points)`
+        );
+        success = true;
+      } catch (err) {
+        retries--;
+        console.log(
+          `[${i + 1}/${pairs.length}] Retry left ${retries} for ${p1.name} -> ${
+            p2.name
+          }: ${err.message}`
+        );
+        if (retries > 0) {
+          await sleep(3000); // 被拒绝后等3秒再试
+        }
+      }
+    }
+
+    // 强制每次请求不管成功失败都延时，防限流
+    await sleep(1500);
   }
+
   if (!fs.existsSync("src/data")) {
     fs.mkdirSync("src/data", { recursive: true });
   }
-  fs.writeFileSync("src/data/roadNetwork.json", JSON.stringify(routes));
-  console.log(
-    "Successfully wrote roadNetwork.json with " + routes.length + " routes."
-  );
+
+  if (routes.length > 0) {
+    fs.writeFileSync("src/data/roadNetwork.json", JSON.stringify(routes));
+    console.log(
+      `\n🎉 Successfully wrote roadNetwork.json with ${routes.length} highly accurate routes.`
+    );
+  } else {
+    console.log(
+      `\n❌ Failed to fetch any routes. OSRM API might be fully blocked.`
+    );
+  }
 }
 
 run();

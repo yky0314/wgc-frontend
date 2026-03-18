@@ -330,16 +330,21 @@ function App() {
         longitude: currentLon,
       });
       if (res?.data?.code === "200" && res.data.data) {
-        const rivalData = res.data.data.map((d) => ({
-          id: `d_${d.id}`,
-          nodeId: d.nodeId,
-          lat: d.latitude,
-          lon: d.longitude,
-          status: "idle",
-          dropoffDest: null,
-          route: null,
-          routeIdx: 0,
-        }));
+        const rivalData = await Promise.all(
+          res.data.data.map(async (d) => {
+            const snapped = await snapToRoad(d.latitude, d.longitude);
+            return {
+              id: `d_${d.id}`,
+              nodeId: d.nodeId,
+              lat: snapped.lat,
+              lon: snapped.lon,
+              status: "idle",
+              dropoffDest: null,
+              route: null,
+              routeIdx: 0,
+            };
+          })
+        );
         setRivalDrivers(rivalData);
         message.success(`Fetched ${rivalData.length} rival drivers`);
       }
@@ -538,13 +543,17 @@ function App() {
             return next;
           });
 
-          // 选随机目的地（送客终点）
+          // 选随机目的地（送客终点），并先吸附到道路上，避免紫色阶段走直线
           const [dLat, dLon] = pickRandomDestinationNear(
             target.lat,
             target.lng,
             DROPOFF_RADIUS_DEG
           );
-          driverDropoffDestRef.current = { lat: dLat, lon: dLon };
+          const snappedDropoff = await snapToRoad(dLat, dLon);
+          driverDropoffDestRef.current = {
+            lat: snappedDropoff.lat,
+            lon: snappedDropoff.lon,
+          };
 
           // 切换到 occupied
           driverStatusRef.current = "occupied";
@@ -604,7 +613,8 @@ function App() {
             curLon,
             DROPOFF_RADIUS_DEG
           );
-          dest = { lat: dLat, lon: dLon };
+          const snappedDest = await snapToRoad(dLat, dLon);
+          dest = { lat: snappedDest.lat, lon: snappedDest.lon };
           driverDropoffDestRef.current = dest;
         }
 
@@ -773,7 +783,7 @@ function App() {
             return {
               ...d,
               lat: passenger.lat,
-              lon: passenger.lon,
+              lon: passenger.lng,
               status: "occupied",
               dropoffDest: { lat: dLat, lon: dLon },
               route: null,
@@ -823,6 +833,8 @@ function App() {
           if (dist <= ARRIVAL_THRESHOLD_M) {
             return {
               ...d,
+              lat: dest.lat,
+              lon: dest.lon,
               status: "idle",
               dropoffDest: null,
               route: null,
@@ -837,6 +849,7 @@ function App() {
               lon: d.lon,
               toLat: dest.lat,
               toLon: dest.lon,
+              phase: "occupied",
             });
             return { ...d, dropoffDest: dest };
           }
@@ -917,11 +930,37 @@ function App() {
 
       // 为需要的司机异步规划路线
       for (const req of routeRequests) {
-        const route = await getRoute(req.lat, req.lon, req.toLat, req.toLon);
-        if (route && route.length > 1) {
+        let toLat = req.toLat;
+        let toLon = req.toLon;
+
+        if (req.phase === "occupied") {
+          const snappedDest = await snapToRoad(req.toLat, req.toLon);
+          toLat = snappedDest.lat;
+          toLon = snappedDest.lon;
+
           setRivalDrivers((prev) =>
             prev.map((rd) =>
-              rd.id === req.driverId ? { ...rd, route, routeIdx: 0 } : rd
+              rd.id === req.driverId
+                ? { ...rd, dropoffDest: { lat: toLat, lon: toLon } }
+                : rd
+            )
+          );
+        }
+
+        const route = await getRoute(req.lat, req.lon, toLat, toLon);
+        if (route && route.length > 1) {
+          const [startLat, startLon] = route[0];
+          setRivalDrivers((prev) =>
+            prev.map((rd) =>
+              rd.id === req.driverId
+                ? {
+                    ...rd,
+                    lat: startLat,
+                    lon: startLon,
+                    route,
+                    routeIdx: 1,
+                  }
+                : rd
             )
           );
         }
@@ -950,9 +989,6 @@ function App() {
       getSize: 18,
       sizeScale: 1,
       pickable: false,
-      transitions: {
-        getPosition: 100,
-      },
     }),
     new IconLayer({
       id: "bg-passengers-layer",

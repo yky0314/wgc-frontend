@@ -84,7 +84,7 @@ export default function AnalyticsDashboard({
     rngRef.current = rng;
     simStateRef.current = {
       taxis: Array.from({ length: taxiCount }, (_, i) =>
-        createBgTaxi(`bg_t_${i}`, currentLat, currentLon, rng, roadNetworkData)
+        createBgTaxi(`bg_t_${i}`, rng, roadNetworkData)
       ),
       passengers: [],
       nextPassengerId: 0,
@@ -117,8 +117,6 @@ export default function AnalyticsDashboard({
         passengers: simStateRef.current.passengers,
         nextPassengerId: simStateRef.current.nextPassengerId,
         rng: rngRef.current,
-        centerLat: currentLat,
-        centerLon: currentLon,
         spawnRate,
         speedMps: speed,
         maxMatchDistM: maxMatchDist,
